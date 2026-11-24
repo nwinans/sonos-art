@@ -38,14 +38,16 @@ restarting the Python process.
 
 The MQTT discovery also creates a `Sonos Art Display` light entity. It provides
 on/off and brightness controls that can be exposed by Home Assistant's HomeKit
-Bridge integration, along with the display-enabled switch.
+Bridge integration. The tuning controls and diagnostics are categorized as
+configuration/diagnostic entities so HomeKit does not expose them by default;
+they remain available in Home Assistant.
 
 ## HomeKit
 
-In Home Assistant, add the **HomeKit Bridge** integration, include the
-`Sonos Art Display` light and/or `Display Enabled` switch, then pair the bridge
-in Apple Home. The select and diagnostic sensors are intentionally left out of
-HomeKit because HomeKit has no useful native representation for them.
+In Home Assistant, add the **HomeKit Bridge** integration and expose only the
+`Sonos Art Display` light, then pair the bridge in Apple Home. That single light
+provides the display on/off state and brightness. The select, tuning controls,
+and diagnostic sensors are intentionally left out of HomeKit.
 
 ## Pi configuration
 

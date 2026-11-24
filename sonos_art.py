@@ -284,6 +284,7 @@ class MqttPublisher:
                 "availability_topic": MQTT_STATUS_TOPIC,
                 "payload_available": "online",
                 "payload_not_available": "offline",
+                "entity_category": "diagnostic",
                 "device": device,
             }
             if unit:
@@ -310,6 +311,7 @@ class MqttPublisher:
                 "max": maximum,
                 "step": step,
                 "unit_of_measurement": unit,
+                "entity_category": "config",
                 "device": device,
             }
             topic = f"{MQTT_DISCOVERY_PREFIX}/number/sonos_art/{key}/config"
@@ -327,6 +329,7 @@ class MqttPublisher:
             "availability_topic": MQTT_STATUS_TOPIC,
             "payload_available": "online",
             "payload_not_available": "offline",
+            "entity_category": "config",
             "device": device,
         }
         self.client.publish(
@@ -373,6 +376,7 @@ class MqttPublisher:
             "availability_topic": MQTT_STATUS_TOPIC,
             "payload_available": "online",
             "payload_not_available": "offline",
+            "entity_category": "config",
             "device": device,
         }
         self.client.publish(
