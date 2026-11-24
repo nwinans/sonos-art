@@ -2,8 +2,13 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-HOST="${SONOS_ART_HOST:-nick@sonos-art.local}"
+HOST="${SONOS_ART_HOST:-}"
 REMOTE_DIR="/tmp/sonos-art-deploy"
+
+if [ -z "$HOST" ]; then
+  echo "Set SONOS_ART_HOST, for example: SONOS_ART_HOST=nick@sonos-art.local bash $0" >&2
+  exit 2
+fi
 
 ssh "$HOST" "mkdir -p '$REMOTE_DIR'"
 rsync -av "$SCRIPT_DIR/sonos_art.py" "$SCRIPT_DIR/sonos-art.service" "$HOST:$REMOTE_DIR/"

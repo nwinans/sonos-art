@@ -21,7 +21,7 @@ from soco import SoCo
 from rgbmatrix import RGBMatrix, RGBMatrixOptions
 
 
-ROOM_IP = os.environ.get("SONOS_ROOM_IP", "192.168.68.70")
+ROOM_IP = os.environ.get("SONOS_ROOM_IP", "")
 # This is the local render/event-loop tick; speaker health checks use the
 # separate FALLBACK_POLL_SECONDS interval below.
 POLL_SECONDS = float(os.environ.get("SONOS_EVENT_TICK_SECONDS", "0.1"))
@@ -30,13 +30,14 @@ PAUSE_FADE_SECONDS = float(os.environ.get("SONOS_PAUSE_FADE_SECONDS", "120"))
 FALLBACK_POLL_SECONDS = float(os.environ.get("SONOS_FALLBACK_POLL_SECONDS", "30"))
 BANNER_SECONDS = float(os.environ.get("SONOS_BANNER_SECONDS", "5"))
 HTTP_PORT = int(os.environ.get("SONOS_ART_HTTP_PORT", "8787"))
-MQTT_HOST = os.environ.get("SONOS_MQTT_HOST", "homeassistant.local")
+MQTT_HOST = os.environ.get("SONOS_MQTT_HOST", "")
 MQTT_PORT = int(os.environ.get("SONOS_MQTT_PORT", "1883"))
 MQTT_USER = os.environ.get("SONOS_MQTT_USER")
 MQTT_PASSWORD = os.environ.get("SONOS_MQTT_PASSWORD")
 MQTT_STATE_TOPIC = "sonos-art/state"
 MQTT_STATUS_TOPIC = "sonos-art/status"
 MQTT_DISCOVERY_PREFIX = os.environ.get("SONOS_MQTT_DISCOVERY_PREFIX", "homeassistant")
+DEVICE_URL = os.environ.get("SONOS_ART_URL", "")
 CONFIG_PATH = os.environ.get("SONOS_ART_CONFIG", "/opt/sonos-art/config.json")
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -222,8 +223,9 @@ class MqttPublisher:
             "manufacturer": "Custom",
             "model": "Raspberry Pi RGB Matrix Sonos Display",
             "sw_version": "0.1.0",
-            "configuration_url": "http://sonos-art.local:8787/",
         }
+        if DEVICE_URL:
+            device["configuration_url"] = DEVICE_URL
         sensors = {
             "health": ("Health", "status", None),
             "transport": ("Transport State", "transport_state", None),
@@ -386,6 +388,8 @@ def show_image(matrix, image, brightness=1.0, banner=None, banner_started=None, 
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    if not ROOM_IP:
+        raise RuntimeError("SONOS_ROOM_IP is not configured")
     speaker = SoCo(ROOM_IP)
     matrix = make_matrix()
     matrix.Clear()

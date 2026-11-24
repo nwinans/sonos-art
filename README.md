@@ -20,8 +20,14 @@ Do not commit either file or place passwords in the repository.
 From the Mac:
 
 ```sh
-bash /Users/nicholaswinans/dev/sonos-art/deploy.sh
+SONOS_ART_HOST=nick@sonos-art.local bash /Users/nicholaswinans/dev/sonos-art/deploy.sh
 ```
 
 The deployment script installs the Python MQTT dependency, updates the systemd
 service, and restarts the display service.
+
+## Pi configuration
+
+Copy `sonos-art.env.example` to `/etc/sonos-art.env` on the Pi and set the
+Sonos room address, MQTT broker, MQTT credentials, and optional device URL.
+The environment file is intentionally not tracked by Git.

@@ -7,4 +7,5 @@ config.json
 
 # Local deployment/runtime artifacts
 sonos-art.env
+*.env
 *.log
