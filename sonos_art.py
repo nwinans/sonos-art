@@ -17,7 +17,7 @@ try:
 except ImportError:
     mqtt = None
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
-from soco import SoCo
+from soco import SoCo, discover
 from rgbmatrix import RGBMatrix, RGBMatrixOptions
 
 
@@ -41,6 +41,7 @@ DEVICE_URL = os.environ.get("SONOS_ART_URL", "")
 CONFIG_PATH = os.environ.get("SONOS_ART_CONFIG", "/opt/sonos-art/config.json")
 DEFAULT_CONFIG = {
     "enabled": True,
+    "speaker_name": "",
     "brightness": 40,
     "banner_seconds": 5,
     "banner_speed": 18,
@@ -48,6 +49,7 @@ DEFAULT_CONFIG = {
     "keep_paused_art": True,
 }
 config_lock = threading.Lock()
+speaker_change_requested = threading.Event()
 
 
 def load_config():
@@ -155,6 +157,31 @@ def throttled_state():
         return None
 
 
+def discover_speakers():
+    found = discover(timeout=5) or set()
+    return {
+        speaker.player_name: speaker.ip_address
+        for speaker in sorted(found, key=lambda item: item.player_name)
+    }
+
+
+def choose_speaker(options):
+    configured_name = get_config("speaker_name")
+    configured_ip = os.environ.get("SONOS_ROOM_IP", "")
+    if configured_name and configured_name in options:
+        return configured_name, options[configured_name]
+    if configured_ip:
+        for name, ip in options.items():
+            if ip == configured_ip:
+                return name, ip
+    if len(options) == 1:
+        return next(iter(options.items()))
+    raise RuntimeError(
+        "No Sonos speaker selected. Discovered speakers: "
+        + ", ".join(f"{name} ({ip})" for name, ip in options.items())
+    )
+
+
 def start_health_server():
     server = ThreadingHTTPServer(("0.0.0.0", HTTP_PORT), HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -164,8 +191,9 @@ def start_health_server():
 
 
 class MqttPublisher:
-    def __init__(self):
+    def __init__(self, speaker_options):
         self.client = None
+        self.speaker_options = speaker_options
         self.connected = threading.Event()
         if mqtt is None:
             logging.warning("paho-mqtt is not installed; MQTT disabled")
@@ -208,6 +236,15 @@ class MqttPublisher:
                     value = max(5, min(60, value))
                 else:
                     value = max(0, min(600, value))
+            elif name == "speaker":
+                if raw not in self.speaker_options:
+                    raise ValueError("unknown Sonos speaker")
+                value = raw
+                set_config("speaker_name", value)
+                self.publish_config_state()
+                logging.info("Sonos speaker changed to %s; restarting service", value)
+                speaker_change_requested.set()
+                return
             else:
                 return
             set_config(name, value)
@@ -303,6 +340,44 @@ class MqttPublisher:
             json.dumps(payload), qos=1, retain=True
         )
 
+        light_payload = {
+            "name": "Sonos Art Display",
+            "unique_id": "sonos_art_display",
+            "command_topic": "sonos-art/config/enabled/set",
+            "state_topic": "sonos-art/config/enabled/state",
+            "brightness_command_topic": "sonos-art/config/brightness/set",
+            "brightness_state_topic": "sonos-art/config/brightness/state",
+            "payload_on": "true",
+            "payload_off": "false",
+            "state_on": "true",
+            "state_off": "false",
+            "brightness_scale": 100,
+            "availability_topic": MQTT_STATUS_TOPIC,
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "device": device,
+        }
+        self.client.publish(
+            f"{MQTT_DISCOVERY_PREFIX}/light/sonos_art/display/config",
+            json.dumps(light_payload), qos=1, retain=True
+        )
+
+        select_payload = {
+            "name": "Sonos Speaker",
+            "unique_id": "sonos_art_speaker",
+            "command_topic": "sonos-art/config/speaker/set",
+            "state_topic": "sonos-art/config/speaker/state",
+            "options": list(self.speaker_options),
+            "availability_topic": MQTT_STATUS_TOPIC,
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "device": device,
+        }
+        self.client.publish(
+            f"{MQTT_DISCOVERY_PREFIX}/select/sonos_art/speaker/config",
+            json.dumps(select_payload), qos=1, retain=True
+        )
+
     def publish_state(self):
         if self.client is None:
             return
@@ -318,6 +393,13 @@ class MqttPublisher:
             values = dict(runtime_config)
         for name, value in values.items():
             self.client.publish(f"sonos-art/config/{name}/state", str(value).lower(), qos=1, retain=True)
+        if values.get("speaker_name"):
+            self.client.publish(
+                "sonos-art/config/speaker/state",
+                values["speaker_name"],
+                qos=1,
+                retain=True,
+            )
 
     def close(self):
         if self.client is not None:
@@ -388,15 +470,24 @@ def show_image(matrix, image, brightness=1.0, banner=None, banner_started=None, 
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    if not ROOM_IP:
-        raise RuntimeError("SONOS_ROOM_IP is not configured")
-    speaker = SoCo(ROOM_IP)
+    speaker_options = discover_speakers()
+    if not speaker_options and ROOM_IP:
+        raise RuntimeError(
+            "Sonos discovery returned no speakers; verify the speaker and Pi are on the same LAN"
+        )
+    if not speaker_options:
+        raise RuntimeError("No Sonos speakers discovered")
+    selected_name, selected_ip = choose_speaker(speaker_options)
+    set_config("speaker_name", selected_name)
+    speaker = SoCo(selected_ip)
+    update_health(room_ip=selected_ip, speaker_name=selected_name)
+    logging.info("selected Sonos speaker: %s (%s)", selected_name, selected_ip)
     matrix = make_matrix()
     matrix.Clear()
     health_server = start_health_server()
     mqtt_publisher = None
     try:
-        mqtt_publisher = MqttPublisher()
+        mqtt_publisher = MqttPublisher(speaker_options)
     except Exception:
         logging.exception("MQTT connection failed; continuing without MQTT")
     event_queue = Queue()
@@ -431,6 +522,9 @@ def main():
 
     try:
         while True:
+            if speaker_change_requested.is_set():
+                logging.info("restarting to apply Sonos speaker selection")
+                raise SystemExit(75)
             enabled = bool(get_config("enabled"))
             if not enabled:
                 if was_enabled:
