@@ -7,6 +7,9 @@ for the selected speaker,
 shows short track/volume banners, and exposes health/configuration through
 Home Assistant MQTT Discovery and a local HTTP endpoint.
 
+TV/HDMI playback is detected from Sonos's `x-sonos-htastream:` source URI and
+uses a TV glyph when no album artwork is available.
+
 ## Security
 
 Runtime credentials and configuration are intentionally excluded from Git:
@@ -30,8 +33,8 @@ service, and restarts the display service.
 On first start, the service discovers the available Sonos speakers locally. The
 speaker selected by `SONOS_ROOM_IP` is saved as the initial selection. After
 MQTT discovery is enabled, Home Assistant exposes a `Sonos Speaker` select
-entity; changing it restarts the service cleanly so subscriptions move to the
-new speaker.
+entity; changing it moves the event subscriptions to the new speaker without
+restarting the Python process.
 
 The MQTT discovery also creates a `Sonos Art Display` light entity. It provides
 on/off and brightness controls that can be exposed by Home Assistant's HomeKit

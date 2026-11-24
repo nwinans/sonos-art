@@ -92,6 +92,7 @@ health = {
     "last_error": None,
     "uptime_seconds": 0,
     "speaker_name": None,
+    "source": None,
     "source_uri": None,
     "is_line_in": False,
     "cpu_temperature_c": None,
@@ -270,6 +271,7 @@ class MqttPublisher:
             "track": ("Track", "title", None),
             "artist": ("Artist", "artist", None),
             "album": ("Album", "album", None),
+            "source": ("Source", "source", None),
             "events": ("Event Subscriptions", "event_subscriptions", None),
             "uptime": ("Uptime", "uptime_seconds", "s"),
         }
@@ -425,6 +427,22 @@ def artwork_image(payload):
     return ImageOps.fit(image, (64, 64), Image.Resampling.LANCZOS)
 
 
+def source_image(source):
+    image = Image.new("RGB", (64, 64), (0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    if source == "TV":
+        draw.rounded_rectangle((8, 12, 55, 45), radius=3, outline=(90, 210, 255), width=3)
+        draw.line((24, 51, 40, 51), fill=(90, 210, 255), width=3)
+        draw.line((32, 45, 32, 51), fill=(90, 210, 255), width=3)
+        draw.line((27, 8, 32, 13), fill=(90, 210, 255), width=2)
+        draw.line((37, 8, 32, 13), fill=(90, 210, 255), width=2)
+        font = banner_font()
+        label = "TV"
+        box = draw.textbbox((0, 0), label, font=font)
+        draw.text(((64 - (box[2] - box[0])) // 2, 27), label, font=font, fill=(255, 255, 255))
+    return image
+
+
 def banner_font():
     for path in (
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -523,8 +541,57 @@ def main():
     try:
         while True:
             if speaker_change_requested.is_set():
-                logging.info("restarting to apply Sonos speaker selection")
-                raise SystemExit(75)
+                requested_name = get_config("speaker_name")
+                speaker_change_requested.clear()
+                if requested_name in speaker_options and requested_name != selected_name:
+                    logging.info("switching Sonos speaker to %s", requested_name)
+                    previous_name = selected_name
+                    previous_speaker = speaker
+                    previous_subscriptions = subscriptions
+                    new_subscriptions = []
+                    try:
+                        new_speaker = SoCo(speaker_options[requested_name])
+                        new_subscriptions.append(new_speaker.avTransport.subscribe(
+                            auto_renew=True, event_queue=event_queue
+                        ))
+                        new_subscriptions.append(new_speaker.renderingControl.subscribe(
+                            auto_renew=True, event_queue=event_queue
+                        ))
+                        for subscription in previous_subscriptions:
+                            subscription.unsubscribe(strict=False)
+                        speaker = new_speaker
+                        subscriptions = new_subscriptions
+                        selected_name = requested_name
+                        last_art_url = None
+                        last_payload = None
+                        base_image = None
+                        paused_at = None
+                        banner_text = None
+                        matrix.Clear()
+                        update_health(
+                            status="ok",
+                            room_ip=speaker_options[selected_name],
+                            speaker_name=selected_name,
+                            event_subscriptions=True,
+                            last_error=None,
+                            title=None,
+                            artist=None,
+                            album=None,
+                        )
+                        if mqtt_publisher:
+                            mqtt_publisher.publish_state()
+                        next_poll = 0.0
+                        logging.info("switched Sonos speaker to %s", selected_name)
+                    except Exception:
+                        for subscription in new_subscriptions:
+                            subscription.unsubscribe(strict=False)
+                        speaker = previous_speaker
+                        subscriptions = previous_subscriptions
+                        update_health(status="degraded", event_subscriptions=False, last_error="speaker switch failed")
+                        logging.exception("speaker switch failed")
+                        set_config("speaker_name", previous_name)
+                        if mqtt_publisher:
+                            mqtt_publisher.publish_config_state()
             enabled = bool(get_config("enabled"))
             if not enabled:
                 if was_enabled:
@@ -556,6 +623,7 @@ def main():
                     state = transport.get("current_transport_state", "STOPPED")
                     track = speaker.get_current_track_info()
                     art_url = track.get("album_art")
+                    source = SoCo.music_source_from_uri(track.get("uri", ""))
                     volume = speaker.volume
                     update_health(
                         status="ok" if subscriptions else "degraded",
@@ -564,6 +632,8 @@ def main():
                         title=track.get("title"),
                         artist=track.get("artist"),
                         album=track.get("album"),
+                        source=source,
+                        source_uri=track.get("uri"),
                         last_success=int(time.time()),
                         last_error=None,
                     )
@@ -571,11 +641,30 @@ def main():
                         mqtt_publisher.publish_state()
 
                     # STOPPED/NO_MEDIA means the display should be blank.
-                    if state in ("STOPPED", "NO_MEDIA") or not art_url:
+                    if state in ("STOPPED", "NO_MEDIA"):
                         update_health(title=None, artist=None, album=None)
                         if last_state not in ("STOPPED", "NO_MEDIA"):
                             matrix.Clear()
                             logging.info("cleared display (%s)", state)
+                        last_art_url = None
+                        last_payload = None
+                        base_image = None
+                        paused_at = None
+                        banner_text = None
+                    elif source == "TV" and f"tv:{track.get('uri', '')}" != last_art_url:
+                        last_art_url = f"tv:{track.get('uri', '')}"
+                        base_image = source_image("TV")
+                        banner_text = "TV"
+                        banner_kind = "track"
+                        banner_started = time.monotonic()
+                        banner_until = time.monotonic() + get_config("banner_seconds")
+                        show_image(matrix, base_image, banner=banner_text, banner_started=banner_started, banner_kind=banner_kind)
+                        paused_at = time.monotonic() if state == "PAUSED_PLAYBACK" else None
+                        last_volume = volume
+                        logging.info("displaying TV source (%s)", state)
+                    elif source != "TV" and not art_url:
+                        update_health(title=None, artist=None, album=None)
+                        matrix.Clear()
                         last_art_url = None
                         last_payload = None
                         base_image = None
