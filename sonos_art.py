@@ -50,6 +50,9 @@ DEFAULT_CONFIG = {
 }
 config_lock = threading.Lock()
 speaker_change_requested = threading.Event()
+source_change_requested = threading.Event()
+source_request_lock = threading.Lock()
+source_request = None
 
 
 def load_config():
@@ -245,6 +248,17 @@ class MqttPublisher:
                 self.publish_config_state()
                 logging.info("Sonos speaker changed to %s; restarting service", value)
                 speaker_change_requested.set()
+                return
+            elif name == "source":
+                if raw not in ("TV", "LINE_IN", "MUSIC"):
+                    raise ValueError("unknown Sonos source")
+                if raw == "MUSIC":
+                    logging.info("Sonos Music source selection is report-only")
+                    return
+                global source_request
+                with source_request_lock:
+                    source_request = raw
+                source_change_requested.set()
                 return
             else:
                 return
@@ -544,6 +558,19 @@ def main():
 
     try:
         while True:
+            if source_change_requested.is_set():
+                with source_request_lock:
+                    requested_source = source_request
+                source_change_requested.clear()
+                try:
+                    if requested_source == "TV":
+                        speaker.switch_to_tv()
+                    elif requested_source == "LINE_IN":
+                        speaker.switch_to_line_in()
+                    next_poll = 0.0
+                    logging.info("requested Sonos source: %s", requested_source)
+                except Exception:
+                    logging.exception("could not switch Sonos source to %s", requested_source)
             if speaker_change_requested.is_set():
                 requested_name = get_config("speaker_name")
                 speaker_change_requested.clear()

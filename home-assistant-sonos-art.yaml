@@ -30,3 +30,49 @@ template:
         state: "{{ state_attr('sensor.sonos_art_health', 'volume') | int(0) }}"
         unit_of_measurement: "%"
         icon: mdi:volume-high
+      - name: Sonos Art TV Source
+        unique_id: sonos_art_tv_source
+        state: >
+          {% set source = states('sensor.sonos_art_source') %}
+          {% set labels = {
+            'TV': 'TV / HDMI',
+            'LINE_IN': 'Line In',
+            'AIRPLAY': 'AirPlay',
+            'RADIO': 'Sonos Music',
+            'LIBRARY': 'Sonos Music',
+            'SPOTIFY_CONNECT': 'Sonos Music',
+            'NONE': 'Sonos Music'
+          } %}
+          {{ labels.get(source, 'Sonos Music') }}
+        attributes:
+          source_list:
+            - Sonos Music
+            - Line In
+            - TV / HDMI
+        icon: mdi:import
+
+media_player:
+  - platform: universal
+    name: Sonos Art TV
+    unique_id: sonos_art_tv
+    device_class: tv
+    state_template: "{{ states('light.sonos_art_display') }}"
+    commands:
+      turn_on:
+        action: light.turn_on
+        target:
+          entity_id: light.sonos_art_display
+      turn_off:
+        action: light.turn_off
+        target:
+          entity_id: light.sonos_art_display
+      select_source:
+        action: mqtt.publish
+        data:
+          topic: sonos-art/config/source/set
+          payload: >
+            {% if source == 'TV / HDMI' %}TV{% elif source == 'Line In' %}LINE_IN{% else %}MUSIC{% endif %}
+    attributes:
+      state: light.sonos_art_display
+      source: sensor.sonos_art_tv_source
+      source_list: sensor.sonos_art_tv_source|source_list

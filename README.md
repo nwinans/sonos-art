@@ -45,9 +45,15 @@ they remain available in Home Assistant.
 ## HomeKit
 
 In Home Assistant, add the **HomeKit Bridge** integration and expose only the
-`Sonos Art Display` light, then pair the bridge in Apple Home. That single light
-provides the display on/off state and brightness. The select, tuning controls,
-and diagnostic sensors are intentionally left out of HomeKit.
+`Sonos Art TV` media player, then pair the bridge in Apple Home using accessory
+mode. It appears as one Television with power and source selection. The older
+`Sonos Art Display` light remains useful in Home Assistant for brightness, but
+should not also be exposed to HomeKit.
+
+Source selection can command `TV / HDMI` and `Line In` when the selected Sonos
+speaker supports them. `Sonos Music` is currently report-only because Sonos
+does not provide a generic way to restore the previous music queue after an
+external input is selected.
 
 ## Pi configuration
 
