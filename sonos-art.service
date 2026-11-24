@@ -1,0 +1,22 @@
+[Unit]
+Description=Sonos album artwork RGB matrix display
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sonos-art
+Environment=SONOS_ROOM_IP=192.168.68.70
+Environment=SONOS_POLL_SECONDS=5
+Environment=MATRIX_BRIGHTNESS=40
+Environment=SONOS_ART_HTTP_PORT=8787
+Environment=SONOS_MQTT_HOST=homeassistant.local
+Environment=SONOS_MQTT_PORT=1883
+EnvironmentFile=-/etc/sonos-art.env
+ExecStart=/opt/sonos-art/venv/bin/python /opt/sonos-art/sonos_art.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

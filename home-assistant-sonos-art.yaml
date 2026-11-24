@@ -1,0 +1,32 @@
+# Add this to Home Assistant configuration.yaml or a loaded package.
+rest:
+  - resource: http://sonos-art.local:8787/health
+    scan_interval: 30
+    timeout: 5
+    sensor:
+      - name: Sonos Art Health
+        unique_id: sonos_art_health
+        value_template: "{{ value_json.status }}"
+        json_attributes:
+          - room_ip
+          - transport_state
+          - volume
+          - title
+          - artist
+          - album
+          - event_subscriptions
+          - last_success
+          - last_error
+          - uptime_seconds
+
+template:
+  - sensor:
+      - name: Dining Room Display Track
+        unique_id: dining_room_display_track
+        state: "{{ state_attr('sensor.sonos_art_health', 'title') or 'Nothing playing' }}"
+        icon: mdi:music-box
+      - name: Dining Room Display Volume
+        unique_id: dining_room_display_volume
+        state: "{{ state_attr('sensor.sonos_art_health', 'volume') | int(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:volume-high

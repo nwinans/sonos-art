@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+config.json
+.env
+*.secret
+
+# Local deployment/runtime artifacts
+sonos-art.env
+*.log
